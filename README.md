@@ -1,5 +1,4 @@
-# AI Finger Tracking Volume Control
-
+# AI Gesture Volume Control
 A computer vision application that enables touch-free system volume control using hand gestures. This project uses a webcam to track the distance between the user's thumb and index finger, mapping it to the system volume level in real-time.
 
 ## Description
