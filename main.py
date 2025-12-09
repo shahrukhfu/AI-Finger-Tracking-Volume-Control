@@ -5,46 +5,42 @@ import numpy as np
 import time
 from pynput.keyboard import Key, Controller
 
-# --- 1. Configuration & Setup ---
+# --- 1. Setup ---
 wCam, hCam = 640, 480
 cap = cv2.VideoCapture(0)
 cap.set(3, wCam)
 cap.set(4, hCam)
 
-# MediaPipe Setup
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 mpDraw = mp.solutions.drawing_utils
 
-# Pynput Keyboard Controller
 keyboard = Controller()
 
-# --- Calibration Constants (Virtual Slider) ---
-VOL_STEP = 2             # Volume changes by 2% per key press
-current_virtual_vol = 0  # Program's internal tracking of volume (0-100)
+# --- 2. Virtual Slider Config ---
+# We track volume internally starting at 100 now
+current_virtual_vol = 100 
+VOL_STEP = 2  # Windows volume usually jumps by 2 per key press
 
-MIN_DIST = 30            # Fingers touching (0% Volume)
-MAX_DIST = 180           # Fingers stretched (100% Volume)
+# Hand Distance Range
+MIN_DIST = 30
+MAX_DIST = 180
 
-# Speed Control: Increase this to slow down the volume change rate
-SLIDER_DELAY = 0.035 
+print("Initializing... Setting volume to 100% for calibration.")
 
-print("Initializing... Calibrating volume to 0 (Please wait).")
-
-# --- 2. Initial Calibration (Set System Volume to 0) ---
-# Sends 50 VolDown key presses to ensure we sync with 0%
+# --- 3. Initial Calibration (Set System Volume to 100) ---
+# Spam 'Volume Up' 50 times to guarantee we start at 100%
 for _ in range(50):
-    keyboard.press(Key.media_volume_down)
-    keyboard.release(Key.media_volume_down)
-    time.sleep(0.01)
+    keyboard.press(Key.media_volume_up)
+    keyboard.release(Key.media_volume_up)
+    time.sleep(0.005)
 
-print("Calibration Complete. Switched to Virtual Slider Mode.")
+print("Calibration Done. System Active at 100%.")
 
-# --- 3. Main Loop ---
+# --- 4. Main Loop ---
 while True:
     success, img = cap.read()
     if not success:
-        print("Failed to grab frame")
         break
     
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -73,41 +69,33 @@ while True:
                 # Calculate Distance
                 length = math.hypot(x2 - x1, y2 - y1)
                 
-                # Map Distance to Target Volume (0-100)
-                target_vol = np.interp(length, [MIN_DIST, MAX_DIST], [0, 100])
-                target_vol = round(target_vol / VOL_STEP) * VOL_STEP # Snap to nearest 2% step
-
-                # --- Virtual Slider Logic ---
+                # Map Distance to 0-100 scale
+                raw_target = np.interp(length, [MIN_DIST, MAX_DIST], [0, 100])
+                target_vol = round(raw_target / VOL_STEP) * VOL_STEP
                 
-                # Check how much we need to adjust
-                difference = int(target_vol - current_virtual_vol) 
-
-                if abs(difference) >= VOL_STEP:
-                    
-                    if difference > 0:
-                        # Volume Up needed
+                # --- The Slider Logic ---
+                diff = target_vol - current_virtual_vol
+                
+                if abs(diff) >= VOL_STEP:
+                    if diff > 0:
                         keyboard.press(Key.media_volume_up)
                         keyboard.release(Key.media_volume_up)
                         current_virtual_vol += VOL_STEP
-                        cv2.circle(img, (cx, cy), 15, (0, 255, 0), cv2.FILLED) # Green
+                        cv2.circle(img, (cx, cy), 15, (0, 255, 0), cv2.FILLED) 
                         
-                    elif difference < 0:
-                        # Volume Down needed
+                    elif diff < 0:
                         keyboard.press(Key.media_volume_down)
                         keyboard.release(Key.media_volume_down)
                         current_virtual_vol -= VOL_STEP
-                        cv2.circle(img, (cx, cy), 15, (0, 0, 255), cv2.FILLED) # Red
-
-                    # Apply delay for smooth speed control
-                    time.sleep(SLIDER_DELAY) 
-                    
-                else:
-                    cv2.circle(img, (cx, cy), 10, (255, 0, 255), cv2.FILLED)
+                        cv2.circle(img, (cx, cy), 15, (0, 0, 255), cv2.FILLED) 
+                        
+                    time.sleep(0.02) 
 
             mpDraw.draw_landmarks(img, handLms, mpHands.HAND_CONNECTIONS)
 
-    # --- Draw UI (Based on Virtual Volume) ---
+    # --- Draw UI ---
     volBar = np.interp(current_virtual_vol, [0, 100], [400, 150])
+    
     cv2.rectangle(img, (50, 150), (85, 400), (0, 255, 0), 3)
     cv2.rectangle(img, (50, int(volBar)), (85, 400), (0, 255, 0), cv2.FILLED)
     cv2.putText(img, f'{int(current_virtual_vol)}%', (40, 450), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 3)
